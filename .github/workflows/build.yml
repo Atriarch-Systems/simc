@@ -1,187 +1,193 @@
-name: build
+# SimC (SimulationCraft) Fork - Base Image Build
+# 
+# This workflow:
+# 1. Runs daily to sync fork's midnight branch with upstream
+# 2. Merges midnight into the atriarch-midnight branch
+# 3. Builds the Docker base image used by Simc.Engine.Node
+# 4. Triggers the Engine.Node workflow to rebuild with the new base
+
+name: Sync Upstream and Build Base Image
 
 on:
-  workflow_call:
-    inputs:
-      do-test:
-        type: boolean
-        required: true
+  schedule:
+    # Run daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  push:
+    branches: [atriarch-midnight]
+  workflow_dispatch:
+
+# Prevent multiple concurrent builds - only one build at a time
+concurrency:
+  group: simc-build
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: atriarch-simc-simulation
+  DOCKER_REGISTRY: docker.atriarch.systems
 
 jobs:
-  ubuntu-gcc-build:
-    name: ubuntu-${{ matrix.compiler }}-cpp${{ matrix.cppVersion }}-build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        compiler: [gcc-12, gcc-14]
-        cppVersion: [17, 20]
-        include:
-          - compiler: gcc-12
-            cxx: g++-12
-            packages: gcc-12 g++-12
-            os: ubuntu-22.04
-          - compiler: gcc-14
-            cxx: g++-14
-            packages: gcc-14 g++-14
-            os: ubuntu-24.04
-
+  sync-fork:
+    name: Sync Fork with Upstream
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    outputs:
+      synced: ${{ steps.sync-fork.outputs.synced }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
+      - name: Sync fork's midnight branch with upstream
+        id: sync-fork
         env:
-          CCACHE_PREFIX: "ubuntu-${{ matrix.compiler }}-cpp-${{ matrix.cppVersion }}-ccache-${{ env.CCACHE_GENERATION }}"
-        with:
-          path: ${{ runner.workspace }}/.ccache
-          key: ${{ env.CCACHE_PREFIX }}-${{ github.sha }}
-          restore-keys: ${{ env.CCACHE_PREFIX }}-
-
-      - name: Install deps
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev ninja-build ccache ${{ matrix.packages }}
+          # Use GitHub API to sync the fork's midnight branch with upstream
+          RESPONSE=$(gh api repos/Atriarch-Systems/simc/merge-upstream \
+            -X POST \
+            -f branch=midnight \
+            2>&1) || true
+          if echo "$RESPONSE" | grep -q "merge_type"; then
+            echo "synced=true" >> $GITHUB_OUTPUT
+            echo "Fork synced with upstream"
+            echo "$RESPONSE"
+          elif echo "$RESPONSE" | grep -q "already"; then
+            echo "synced=false" >> $GITHUB_OUTPUT
+            echo "Fork already up to date with upstream"
+          else
+            echo "synced=false" >> $GITHUB_OUTPUT
+            echo "Sync response: $RESPONSE"
+          fi
 
-      - name: Configure
-        run:
-          cmake -H. -B'${{ runner.workspace }}/b/ninja' -GNinja -DBUILD_GUI=OFF
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.compiler }}
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_STANDARD=${{ matrix.cppVersion }}
-
-      - name: Build
-        env:
-          CCACHE_BASEDIR: ${{ runner.workspace }}
-          CCACHE_DIR: ${{ runner.workspace }}/.ccache
-          CCACHE_MAXSIZE: 192M # full build consumes around ~80, ~2x that to be safe
-        run: |
-          ccache -z
-          ninja -C '${{ runner.workspace }}/b/ninja'
-          ccache -s
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.workspace }}/b/ninja/simc
-            profiles
-            tests
-            generate_profiles_ci.sh
-            .git
-          key: ubuntu-${{ matrix.compiler }}-for_run-${{ github.sha }}-cpp-${{ matrix.cppVersion }}
-
-  ubuntu-clang-build:
-    name: ubuntu-build-${{ matrix.compiler }}-C++${{ matrix.cppVersion }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        cppVersion: [17, 20]
-        compiler: [clang++-15, clang++-18]
-        include:
-          - compiler: clang++-15
-            os: ubuntu-22.04
-            packages: clang-15 lld-15
-            enable_file_prefix_map: true
-          - compiler: clang++-18
-            os: ubuntu-24.04
-            packages: clang-18 lld-18
-            enable_file_prefix_map: true
-
+  merge-to-atriarch:
+    name: Merge to Atriarch Branch
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    needs: sync-fork
+    outputs:
+      changes_detected: ${{ steps.merge.outputs.changes_detected }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        env:
-          CCACHE_PREFIX: "ubuntu-${{ matrix.compiler }}-cpp-${{ matrix.cppVersion }}-ccache-${{ env.CCACHE_GENERATION }}"
+      - name: Checkout atriarch-midnight branch
+        uses: actions/checkout@v4
         with:
-          path: ${{ runner.workspace }}/.ccache
-          key: ${{ env.CCACHE_PREFIX }}-${{ github.sha }}
-          restore-keys: ${{ env.CCACHE_PREFIX }}-
+          ref: atriarch-midnight
+          fetch-depth: 0
+          token: ${{ secrets.GITOPS_TOKEN }}
 
-      - name: Install deps
+      - name: Configure Git
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev ninja-build ccache ${{ matrix.packages }}
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Configure
-        env:
-          UBSAN_STRIP_COUNT: '`echo "${{ runner.workspace }}//" | grep -o ''/'' - | wc -l`'
-        run:
-          cmake -H. -B'${{ runner.workspace }}/b/ninja' -GNinja -DBUILD_GUI=OFF
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
-          -DCMAKE_CXX_FLAGS="-Og ${{ matrix.enable_file_prefix_map && format('-ffile-prefix-map={0}/=/', runner.workspace) || ''}}
-          -fno-omit-frame-pointer -fsanitize=address,undefined
-          -fsanitize-undefined-strip-path-components=$UBSAN_STRIP_COUNT"
-          -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld -fsanitize=address,undefined"
-          -DCMAKE_CXX_STANDARD=${{ matrix.cppVersion }}
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build
-        env:
-          CCACHE_BASEDIR: ${{ runner.workspace }}
-          CCACHE_DIR: ${{ runner.workspace }}/.ccache
-          CCACHE_MAXSIZE: 256M # full build consumes around ~124, ~2x that to be safe
+      - name: Merge midnight into atriarch-midnight
+        id: merge
         run: |
-          ccache -z
-          ninja -C '${{ runner.workspace }}/b/ninja'
-          ccache -s
+          # Get the current commit hash before merge
+          BEFORE_HASH=$(git rev-parse HEAD)
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.workspace }}/b/ninja/simc
-            profiles
-            tests
-            generate_profiles_ci.sh
-            .git
-          key: ubuntu-${{ matrix.compiler }}-for_run-${{ github.sha }}-cpp-${{ matrix.cppVersion }}
+          # Fetch the updated midnight branch
+          git fetch origin midnight
 
-  build-osx:
-    name: macos-latest
-    runs-on: macos-latest
+          # Before merging, backup our workflow directory
+          cp -r .github/workflows /tmp/our-workflows
+
+          # Try to merge midnight into atriarch-midnight
+          if git merge origin/midnight --no-edit -X theirs; then
+            # Restore our workflows (overwrite whatever came from upstream)
+            rm -rf .github/workflows/*
+            cp /tmp/our-workflows/* .github/workflows/
+
+            # Check if there are changes to commit (our workflow restoration)
+            if ! git diff --quiet .github/workflows/ 2>/dev/null || ! git diff --cached --quiet .github/workflows/ 2>/dev/null; then
+              git add .github/workflows/
+              git commit -m "ci: preserve Atriarch workflows after merge" || true
+            fi
+
+            AFTER_HASH=$(git rev-parse HEAD)
+            if [ "$BEFORE_HASH" != "$AFTER_HASH" ]; then
+              echo "changes_detected=true" >> $GITHUB_OUTPUT
+              git push origin atriarch-midnight
+              echo "Successfully merged midnight into atriarch-midnight"
+            else
+              echo "changes_detected=false" >> $GITHUB_OUTPUT
+              echo "No new changes to merge"
+            fi
+          else
+            echo "Merge conflict detected - manual intervention required"
+            git merge --abort
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  build-and-push:
+    name: Build and Push Base Image
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    needs: merge-to-atriarch
+    if: |
+      always() &&
+      (needs.merge-to-atriarch.outputs.changes_detected == 'true' ||
+       github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Build
-        run: make SANITIZE=1 -C engine debug -j 2
-
-      - name: Smoke Test
-        if: inputs.do-test == 'true'
-        run: ./engine/simc $SIMC_PROFILE iterations=5 output=/dev/null html=/dev/null json2=/dev/null cleanup_threads=1
-
-  windows-VS:
-    name: windows-VS-${{ matrix.vs }}-${{ matrix.arch }}
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        vs: [2019]
-        arch: [x64, amd64_arm64]
-        include:
-          - arch: x64
-            runSmokeTest: false # disable smoke test for now, as it seems to hang the workflow indefinitely on assert, instead of failing.
-
-    env:
-      CMAKE_BUILD_DIR: ${{ github.workspace }}/builddir/
-
-    steps:
-      - uses: actions/checkout@v4
-
-        # Setup the build machine with the most recent versions of CMake and Ninja. Both are cached if not already: on subsequent runs both will be quickly restored from GitHub cache service.
-      - uses: lukka/get-cmake@latest
-
-      # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
-      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          arch: ${{ matrix.arch }}
+          ref: atriarch-midnight
 
-      - name: Generate project files
+      - name: Set image tag
+        id: set-tag
         run: |
-          cmake -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DBUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Debug
+          # Use date-based tag for simc base image
+          TAG="v$(date +'%Y%m%d').${{ github.run_number }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Build
-        run: |
-          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Smoke Test
-        if: matrix.runSmokeTest && inputs.do-test == 'true'
-        run: ${{ env.CMAKE_BUILD_DIR }}/simc.exe $env:SIMC_PROFILE iterations=5 output=nul html=nul json2=nul cleanup_threads=1
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:cache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
+
+  trigger-engine-node:
+    name: Trigger Engine.Node Rebuild
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    needs: build-and-push
+    steps:
+      - name: Trigger Engine.Node workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITOPS_TOKEN }}
+          repository: Atriarch-Systems/Atriarch.Simc.Engine.Node
+          event-type: simc-base-updated
+          client-payload: '{"image_tag": "${{ needs.build-and-push.outputs.image_tag }}"}'
+
+  notify:
+    name: Send Notification
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    needs: [sync-fork, merge-to-atriarch, build-and-push, trigger-engine-node]
+    if: always()
+    steps:
+      - name: Send Discord notification
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_BUILD_NOTIFY_WEBHOOK }}
+          title: "SimC Base Image Sync & Build"
+          description: |
+            **Status:** ${{ needs.build-and-push.result == 'success' && '✅ Success' || needs.build-and-push.result == 'skipped' && '⏭️ Skipped (no changes)' || '❌ Failed' }}
+            **Fork Synced:** ${{ needs.sync-fork.outputs.synced == 'true' && 'Yes' || 'No (already up to date)' }}
+            **Changes Merged:** ${{ needs.merge-to-atriarch.outputs.changes_detected == 'true' && 'Yes' || 'No' }}
+            **Tag:** ${{ needs.build-and-push.outputs.image_tag || 'N/A' }}
+            **Engine.Node Trigger:** ${{ needs.trigger-engine-node.result == 'success' && '✅ Triggered' || '⏭️ Skipped' }}
+          color: ${{ needs.build-and-push.result == 'success' && '0x00ff00' || needs.build-and-push.result == 'skipped' && '0xffff00' || '0xff0000' }}
