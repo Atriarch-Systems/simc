@@ -1,0 +1,208 @@
+# SimC (SimulationCraft) fork — upstream sync + base image build
+#
+# This file lives on TWO branches:
+#   - the fork's default branch: GitHub only fires cron schedules from the
+#     default branch, so this copy is what makes the daily sync actually run
+#   - atriarch-overlay: so edits to the overlay trigger an immediate rebuild
+# Keep both copies identical.
+#
+# What it does:
+#   1. Resolves the upstream repo's CURRENT default branch at runtime, so
+#      expansion branch renames (thewarwithin -> midnight -> ...) never
+#      break the sync.
+#   2. Syncs the fork's copy of that branch from upstream (merge-upstream
+#      API; creates the branch in the fork if upstream renamed it).
+#   3. Regenerates the atriarch-simc build branch FROM SCRATCH:
+#      upstream tree, upstream CI workflows removed, files from
+#      atriarch-overlay applied on top. No merging — it cannot conflict.
+#   4. If the resulting tree differs from the last build branch (or on a
+#      forced/manual run), builds the simc base image using upstream's own
+#      Dockerfile and pushes a date tag plus :latest.
+#   5. Fires repository_dispatch (simc-base-updated) so Engine.Node
+#      rebuilds on the new base.
+
+name: Sync Upstream and Build Base Image
+
+on:
+  schedule:
+    # Daily at 3 AM UTC. NOTE: only fires from the default branch.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: Build and push even if nothing changed upstream
+        type: boolean
+        default: false
+  push:
+    branches: [atriarch-overlay]
+
+# Only one sync/build at a time
+concurrency:
+  group: simc-base-build
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: atriarch-simc-simulation
+  DOCKER_REGISTRY: docker.atriarch.systems
+  BUILD_BRANCH: atriarch-simc
+  OVERLAY_BRANCH: atriarch-overlay
+
+jobs:
+  sync-and-assemble:
+    name: Sync Upstream and Assemble Build Branch
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    outputs:
+      changed: ${{ steps.assemble.outputs.changed }}
+      upstream_branch: ${{ steps.resolve.outputs.upstream_branch }}
+      new_mirror_branch: ${{ steps.sync.outputs.new_mirror_branch }}
+    steps:
+      - name: Resolve upstream repo and default branch
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          UPSTREAM_REPO=$(gh api "repos/${{ github.repository }}" -q '.parent.full_name')
+          UPSTREAM_BRANCH=$(gh api "repos/$UPSTREAM_REPO" -q '.default_branch')
+          echo "upstream_repo=$UPSTREAM_REPO" >> $GITHUB_OUTPUT
+          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
+          echo "Upstream: $UPSTREAM_REPO @ $UPSTREAM_BRANCH"
+
+      - name: Sync fork copy of upstream default branch
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          UB="${{ steps.resolve.outputs.upstream_branch }}"
+          if gh api "repos/${{ github.repository }}/branches/$UB" >/dev/null 2>&1; then
+            echo "new_mirror_branch=false" >> $GITHUB_OUTPUT
+            # Server-side merge of upstream into the fork's branch. Extra
+            # Atriarch files (this workflow) survive; upstream never edits them.
+            gh api "repos/${{ github.repository }}/merge-upstream" \
+              -X POST -f branch="$UB" -q '.message'
+          else
+            # Upstream switched to a new expansion branch the fork doesn't
+            # have yet — the assemble step below creates the mirror.
+            echo "new_mirror_branch=true" >> $GITHUB_OUTPUT
+            echo "Fork has no branch $UB yet; it will be created"
+          fi
+
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ secrets.GITOPS_TOKEN }}
+
+      - name: Assemble build branch (upstream tree + overlay)
+        id: assemble
+        run: |
+          set -euo pipefail
+          UB="${{ steps.resolve.outputs.upstream_branch }}"
+          UPSTREAM_REPO="${{ steps.resolve.outputs.upstream_repo }}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --filter=blob:none upstream "$UB"
+          git fetch --filter=blob:none origin "$OVERLAY_BRANCH"
+          git fetch --filter=blob:none origin "$BUILD_BRANCH" || true
+
+          # New expansion branch: create the fork's mirror of it
+          if [ "${{ steps.sync.outputs.new_mirror_branch }}" = "true" ]; then
+            git push origin "refs/remotes/upstream/$UB:refs/heads/$UB"
+            echo "::warning::Created new mirror branch $UB. Consider making it the fork default branch and copying .github/workflows/atriarch-sync-build.yml onto it so the daily cron keeps firing."
+          fi
+
+          # Regenerate the build branch: upstream tree, upstream CI removed,
+          # overlay files (minus its .github) applied on top.
+          git checkout -B "$BUILD_BRANCH" "upstream/$UB"
+          rm -rf .github/workflows
+          git checkout "origin/$OVERLAY_BRANCH" -- . ':(exclude).github'
+          git add -A
+          git commit -m "chore: assemble $BUILD_BRANCH from $UB @ $(git rev-parse --short "upstream/$UB") + overlay @ $(git rev-parse --short "origin/$OVERLAY_BRANCH")"
+
+          PREV_TREE=$(git rev-parse "origin/$BUILD_BRANCH^{tree}" 2>/dev/null || echo none)
+          NEW_TREE=$(git rev-parse 'HEAD^{tree}')
+          if [ "$PREV_TREE" = "$NEW_TREE" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Build branch tree unchanged — nothing new upstream"
+          else
+            git push --force origin "$BUILD_BRANCH"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Build branch updated"
+          fi
+
+  build-and-push:
+    name: Build and Push Base Image
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
+    needs: sync-and-assemble
+    timeout-minutes: 300
+    if: |
+      needs.sync-and-assemble.outputs.changed == 'true' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.force_build)
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.tag }}
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+        with:
+          ref: atriarch-simc
+
+      - name: Set image tag
+        id: set-tag
+        run: |
+          TAG="v$(date +'%Y%m%d').${{ github.run_number }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg THREADS=$(nproc) \
+            -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }} \
+            -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+          docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  trigger-engine-node:
+    name: Trigger Engine.Node Rebuild
+    runs-on: [self-hosted, Linux, ARM64, arm64, arc-arm64]
+    needs: build-and-push
+    steps:
+      - name: Trigger Engine.Node workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITOPS_TOKEN }}
+          repository: Atriarch-Systems/Atriarch.Simc.Engine.Node
+          event-type: simc-base-updated
+          client-payload: '{"image_tag": "${{ needs.build-and-push.outputs.image_tag }}"}'
+
+  notify:
+    name: Send Notification
+    runs-on: [self-hosted, Linux, ARM64, arm64, arc-arm64]
+    needs: [sync-and-assemble, build-and-push, trigger-engine-node]
+    if: always()
+    steps:
+      - name: Send Discord notification
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_BUILD_NOTIFY_WEBHOOK }}
+          title: "SimC Base Image Sync & Build"
+          description: |
+            **Status:** ${{ needs.build-and-push.result == 'success' && '✅ Success' || needs.build-and-push.result == 'skipped' && '⏭️ Skipped (no upstream changes)' || '❌ Failed' }}
+            **Upstream branch:** ${{ needs.sync-and-assemble.outputs.upstream_branch }}
+            **Changes:** ${{ needs.sync-and-assemble.outputs.changed == 'true' && 'Yes' || 'No' }}
+            **Tag:** ${{ needs.build-and-push.outputs.image_tag || 'N/A' }}
+            **Engine.Node Trigger:** ${{ needs.trigger-engine-node.result == 'success' && '✅ Triggered' || '⏭️ Skipped' }}
+          color: ${{ needs.build-and-push.result == 'success' && '0x00ff00' || needs.build-and-push.result == 'skipped' && '0xffff00' || '0xff0000' }}
