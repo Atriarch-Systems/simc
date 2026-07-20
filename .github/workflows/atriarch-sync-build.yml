@@ -20,6 +20,11 @@
 #      Dockerfile and pushes a date tag plus :latest.
 #   5. Fires repository_dispatch (simc-base-updated) so Engine.Node
 #      rebuilds on the new base.
+#
+# Runner notes: the self-hosted ARC runners provide git, docker, and node
+# but NOT the gh CLI or jq — GitHub API calls go through actions/github-script
+# (bundled Octokit). Every job runs on the amd64 label set the ARC pool
+# actually advertises: [self-hosted, Linux, X64, amd64, arc-amd64].
 
 name: Sync Upstream and Build Base Image
 
@@ -54,37 +59,44 @@ jobs:
     outputs:
       changed: ${{ steps.assemble.outputs.changed }}
       upstream_branch: ${{ steps.resolve.outputs.upstream_branch }}
-      new_mirror_branch: ${{ steps.sync.outputs.new_mirror_branch }}
     steps:
-      - name: Resolve upstream repo and default branch
+      - name: Resolve upstream, sync fork mirror branch
         id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
-        run: |
-          UPSTREAM_REPO=$(gh api "repos/${{ github.repository }}" -q '.parent.full_name')
-          UPSTREAM_BRANCH=$(gh api "repos/$UPSTREAM_REPO" -q '.default_branch')
-          echo "upstream_repo=$UPSTREAM_REPO" >> $GITHUB_OUTPUT
-          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
-          echo "Upstream: $UPSTREAM_REPO @ $UPSTREAM_BRANCH"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITOPS_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const self = (await github.rest.repos.get({ owner, repo })).data;
+            if (!self.parent) throw new Error('Repo is not a fork; cannot resolve upstream.');
+            const upstreamRepo = self.parent.full_name;
+            const [uOwner, uRepo] = upstreamRepo.split('/');
+            const upstreamBranch = (await github.rest.repos.get({ owner: uOwner, repo: uRepo })).data.default_branch;
+            core.info(`Upstream: ${upstreamRepo} @ ${upstreamBranch}`);
+            core.setOutput('upstream_repo', upstreamRepo);
+            core.setOutput('upstream_branch', upstreamBranch);
 
-      - name: Sync fork copy of upstream default branch
-        id: sync
-        env:
-          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
-        run: |
-          UB="${{ steps.resolve.outputs.upstream_branch }}"
-          if gh api "repos/${{ github.repository }}/branches/$UB" >/dev/null 2>&1; then
-            echo "new_mirror_branch=false" >> $GITHUB_OUTPUT
-            # Server-side merge of upstream into the fork's branch. Extra
-            # Atriarch files (this workflow) survive; upstream never edits them.
-            gh api "repos/${{ github.repository }}/merge-upstream" \
-              -X POST -f branch="$UB" -q '.message'
-          else
-            # Upstream switched to a new expansion branch the fork doesn't
-            # have yet — the assemble step below creates the mirror.
-            echo "new_mirror_branch=true" >> $GITHUB_OUTPUT
-            echo "Fork has no branch $UB yet; it will be created"
-          fi
+            let hasBranch = true;
+            try {
+              await github.rest.repos.getBranch({ owner, repo, branch: upstreamBranch });
+            } catch (e) {
+              if (e.status === 404) hasBranch = false; else throw e;
+            }
+            core.setOutput('new_mirror_branch', String(!hasBranch));
+
+            if (hasBranch) {
+              try {
+                const r = await github.request('POST /repos/{owner}/{repo}/merge-upstream', {
+                  owner, repo, branch: upstreamBranch,
+                });
+                core.info(`merge-upstream: ${r.data.message || 'ok'}`);
+              } catch (e) {
+                // Non-fatal: a dirty/diverged mirror shouldn't block the build.
+                core.warning(`merge-upstream failed: ${e.message}`);
+              }
+            } else {
+              core.warning(`Fork has no branch ${upstreamBranch} yet; the assemble step will create it.`);
+            }
 
       - name: Checkout fork
         uses: actions/checkout@v4
@@ -95,10 +107,12 @@ jobs:
 
       - name: Assemble build branch (upstream tree + overlay)
         id: assemble
+        env:
+          UB: ${{ steps.resolve.outputs.upstream_branch }}
+          UPSTREAM_REPO: ${{ steps.resolve.outputs.upstream_repo }}
+          NEW_MIRROR: ${{ steps.resolve.outputs.new_mirror_branch }}
         run: |
           set -euo pipefail
-          UB="${{ steps.resolve.outputs.upstream_branch }}"
-          UPSTREAM_REPO="${{ steps.resolve.outputs.upstream_repo }}"
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
@@ -108,9 +122,9 @@ jobs:
           git fetch --filter=blob:none origin "$BUILD_BRANCH" || true
 
           # New expansion branch: create the fork's mirror of it
-          if [ "${{ steps.sync.outputs.new_mirror_branch }}" = "true" ]; then
+          if [ "$NEW_MIRROR" = "true" ]; then
             git push origin "refs/remotes/upstream/$UB:refs/heads/$UB"
-            echo "::warning::Created new mirror branch $UB. Consider making it the fork default branch and copying .github/workflows/atriarch-sync-build.yml onto it so the daily cron keeps firing."
+            echo "::warning::Created new mirror branch $UB. Make it the fork default branch and copy .github/workflows/atriarch-sync-build.yml onto it so the daily cron keeps firing."
           fi
 
           # Regenerate the build branch: upstream tree, upstream CI removed,
@@ -124,11 +138,11 @@ jobs:
           PREV_TREE=$(git rev-parse "origin/$BUILD_BRANCH^{tree}" 2>/dev/null || echo none)
           NEW_TREE=$(git rev-parse 'HEAD^{tree}')
           if [ "$PREV_TREE" = "$NEW_TREE" ]; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Build branch tree unchanged — nothing new upstream"
           else
             git push --force origin "$BUILD_BRANCH"
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Build branch updated"
           fi
 
@@ -153,7 +167,7 @@ jobs:
         id: set-tag
         run: |
           TAG="v$(date +'%Y%m%d').${{ github.run_number }}"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Registry
         uses: docker/login-action@v3
@@ -177,7 +191,7 @@ jobs:
 
   trigger-engine-node:
     name: Trigger Engine.Node Rebuild
-    runs-on: [self-hosted, Linux, ARM64, arm64, arc-arm64]
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
     needs: build-and-push
     steps:
       - name: Trigger Engine.Node workflow
@@ -190,7 +204,7 @@ jobs:
 
   notify:
     name: Send Notification
-    runs-on: [self-hosted, Linux, ARM64, arm64, arc-arm64]
+    runs-on: [self-hosted, Linux, X64, amd64, arc-amd64]
     needs: [sync-and-assemble, build-and-push, trigger-engine-node]
     if: always()
     steps:
