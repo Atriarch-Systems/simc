@@ -3931,7 +3931,8 @@ void paladin_t::apply_action_effects( action_t* a ) {
   if ( !talents.crusade->ok() )
     aw_effect_mask.disable( 11 );
 
-  action->parse_effects( buffs.avenging_wrath, aw_effect_mask, IGNORE_STACKS );
+  if ( !is_ptr() || talents.sentinel->ok() )
+    action->parse_effects( buffs.avenging_wrath, aw_effect_mask, IGNORE_STACKS );
   action->parse_effects( buffs.divine_power );
   // TODO: add in Divine Purpose - logic here is going to be complex
 
