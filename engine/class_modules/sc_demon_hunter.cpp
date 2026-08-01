@@ -1172,6 +1172,8 @@ public:
   {
     // Annihilator
     accumulated_rng_t* voidfall;
+    // MID2 Devourer 2pc
+    accumulated_rng_t* soulburst;
   } accumulated_rng;
 
   // Special
@@ -1256,6 +1258,11 @@ public:
     double proc_from_killing_blow_chance          = 0.4;
     int entropy_starting_souls                    = -1;
     int channel_tick_cutoff_benefit               = 2;
+    // Soulburst chance grows by step with each harvest that fails to proc, up to cap.
+    // Fitted from PTR logs. Set base to 0 to use the flat roll from spell data.
+    double soulburst_blp_base = 0.0663;
+    double soulburst_blp_step = 0.0519;
+    double soulburst_blp_cap  = 0.3949;
   } options;
 
   demon_hunter_t( sim_t* sim, util::string_view name, race_e r );
@@ -3440,9 +3447,15 @@ struct soulburst_trigger_t : public BASE
   void trigger_soulburst( unsigned fragments_consumed )
   {
     // TOCHECK: Is this instant?
-    if ( BASE::dh()->set_bonuses.mid2_devourer_2pc->ok() &&
-         fragments_consumed >= BASE::dh()->set_bonuses.mid2_devourer_2pc->effectN( 1 ).base_value() &&
-         BASE::rng().roll( BASE::dh()->set_bonuses.mid2_devourer_2pc->effectN( 2 ).percent() ) )
+    if ( !BASE::dh()->set_bonuses.mid2_devourer_2pc->ok() ||
+         fragments_consumed < BASE::dh()->set_bonuses.mid2_devourer_2pc->effectN( 1 ).base_value() )
+      return;
+
+    // Harvests below the fragment threshold don't roll and don't advance the counter.
+    const bool proc = BASE::dh()->accumulated_rng.soulburst
+                          ? BASE::dh()->accumulated_rng.soulburst->trigger() > 0
+                          : BASE::rng().roll( BASE::dh()->set_bonuses.mid2_devourer_2pc->effectN( 2 ).percent() );
+    if ( proc )
     {
       BASE::dh()->buff.soulburst->trigger();
     }
@@ -4834,6 +4847,11 @@ struct immolation_aura_t : public demon_hunter_spell_t
     demon_hunter_spell_t::execute();
 
     dh()->trigger_demonsurge( demonsurge_ability::CONSUMING_FIRE );
+
+    if ( action_list->name_str == "precombat" )
+    {
+      internal_cooldown->reset( false );
+    }
   }
 
   std::unique_ptr<expr_t> create_expression( util::string_view name ) override
@@ -5642,8 +5660,7 @@ struct consume_base_t : public shattered_souls_trigger_t<voidfall_building_trigg
 {
   struct soulburst_t : public shattered_souls_trigger_t<demon_hunter_spell_t>
   {
-    soulburst_t( util::string_view n, demon_hunter_t* p )
-      : base_t( n, p, p->set_bonuses.soulburst_damage )
+    soulburst_t( util::string_view n, demon_hunter_t* p ) : base_t( n, p, p->set_bonuses.soulburst_damage )
     {
       background = dual = true;
       aoe               = -1;
@@ -6011,6 +6028,7 @@ struct eradicate_t
     damage_action      = p->get_background_action<eradicate_damage_t>( "eradicate_reap", p->spec.eradicate_damage );
     damage_action->aoe = -1;
     damage_action->reduced_aoe_targets = p->talent.devourer.eradicate->effectN( 1 ).base_value();
+    damage_action->base_aoe_multiplier = data().effectN( 1 ).percent();
     add_child( damage_action );
 
     if ( p->talent.devourer.void_metamorphosis->ok() )
@@ -6019,6 +6037,7 @@ struct eradicate_t
           p->get_background_action<eradicate_damage_t>( "eradicate_cull", p->spec.eradicate_damage_meta );
       damage_action_meta->aoe                 = -1;
       damage_action_meta->reduced_aoe_targets = p->talent.devourer.eradicate->effectN( 1 ).base_value();
+      damage_action_meta->base_aoe_multiplier = data().effectN( 1 ).percent();
       add_child( damage_action_meta );
     }
 
@@ -10325,6 +10344,9 @@ void demon_hunter_t::create_options()
   add_option( opt_deprecated( "entropy_starting_souls", "demonhunter.entropy_starting_souls" ) );
   add_option( opt_int( "demonhunter.channel_tick_cutoff_benefit", options.channel_tick_cutoff_benefit, 0, 10 ) );
   add_option( opt_deprecated( "channel_tick_cutoff_benefit", "demonhunter.channel_tick_cutoff_benefit" ) );
+  add_option( opt_float( "demonhunter.soulburst_blp_base", options.soulburst_blp_base, 0.0, 1.0 ) );
+  add_option( opt_float( "demonhunter.soulburst_blp_step", options.soulburst_blp_step, 0.0, 1.0 ) );
+  add_option( opt_float( "demonhunter.soulburst_blp_cap", options.soulburst_blp_cap, 0.0, 1.0 ) );
 
   add_option( opt_float( "demonhunter.void_metamorphosis_initial_drain", devourer_fury_state.initial_drain, 0, 100 ) );
   add_option( opt_deprecated( "void_metamorphosis_initial_drain", "demonhunter.void_metamorphosis_initial_drain" ) );
@@ -10576,6 +10598,17 @@ void demon_hunter_t::init_rng()
   // Accumulated proc objects
   accumulated_rng.voidfall =
       get_accumulated_rng( "voidfall", prd::find_constant( talent.annihilator.voidfall->effectN( 3 ).percent() ) );
+
+  accumulated_rng.soulburst = nullptr;
+  if ( set_bonuses.mid2_devourer_2pc->ok() && options.soulburst_blp_base > 0 )
+  {
+    accumulated_rng.soulburst =
+        get_accumulated_rng( "soulburst", options.soulburst_blp_base, 0U,
+                             [ step = options.soulburst_blp_step, cap = options.soulburst_blp_cap ](
+                                 double base, unsigned count, action_state_t* ) {
+                               return std::min( base + step * ( as<double>( count ) - 1.0 ), cap );
+                             } );
+  }
 
   player_t::init_rng();
 }

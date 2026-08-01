@@ -4431,7 +4431,10 @@ struct ice_lance_t final : public frost_mage_spell_t
     enable_calculate_on_impact( 228598 );
 
     if ( p->talents.fractured_frost.ok() )
+    {
       aoe = 1 + as<int>( p->talents.fractured_frost->effectN( 1 ).base_value() );
+      chain_multiplier = p->talents.fractured_frost->effectN( 2 ).percent();
+    }
 
     if ( p->spec.shatter->ok() )
       add_child( p->action.shatter.ice_lance );
@@ -4768,7 +4771,7 @@ struct meteorite_impact_t final : public mage_spell_t
     if ( p()->specialization() == MAGE_FIRE )
       // TODO: Double check apply_recharge_rate
       p()->cooldowns.fire_blast->adjust( -p()->talents.pyrocosm->effectN( 4 ).time_value(), true, false );
-    else if ( !p()->bugs )
+    else
       // TODO: Interactions with CC proc chance increases?
       p()->trigger_clearcasting( p()->talents.pyrocosm->effectN( 5 ).percent() );
   }
@@ -6411,8 +6414,11 @@ void mage_t::create_buffs()
   buffs.rapid_refreezing   = make_buff( this, "rapid_refreezing", find_spell( 1310248 ) )
                                ->set_tick_callback( [ this ] ( buff_t*, int, timespan_t )
                                  { trigger_icicle(); } )
-                                // We collect RPPM data from parent spell
-                               ->set_trigger_spell( sets->set( MAGE_FROST, MID2, B4 ) );
+                               // We collect RPPM data from parent spell
+                               ->set_trigger_spell( sets->set( MAGE_FROST, MID2, B4 ) )
+                               // Set to the last known value before it was removed from spell data
+                               // TODO: Figure out how it works now
+                               ->set_rppm( RPPM_NONE, 2.0 );
   buffs.thermal_void       = make_buff( this, "thermal_void", find_spell( 1247730 ) )
                                ->set_chance( talents.thermal_void->effectN( 1 ).percent() );
 
@@ -7540,12 +7546,6 @@ public:
       .operation( hotfix::HOTFIX_SET )
       .modifier( 30.0 )
       .verification_value( 0.0 );
-
-    hotfix::register_spell( "Mage", "2026-07-10", "Remove unused RPPM from Frost's 4pc", 1310248 )
-      .field( "rppm" )
-      .operation( hotfix::HOTFIX_SET )
-      .modifier( 0.0 )
-      .verification_value( 5.0 );
   }
 
   bool valid() const override { return true; }
