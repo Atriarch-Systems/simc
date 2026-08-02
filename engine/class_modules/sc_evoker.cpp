@@ -502,9 +502,24 @@ struct simplified_player_t : public player_t
         } 
       },
       { "tank", 
-        { ROLE_TANK, 20.9 * 1.21, true, 1.5_s, 0.45, -1, 8, 1, 0.0, 20000.0, 0.0011, 0, 0,
+        { ROLE_TANK, 20.9 * 0.9, true, 1.5_s, 0.45, -1, 8, 1, 0.0, 20000.0, 0.0011, 0, 0,
           {
             { "dps_pot", 695.0, 30_s, 300_s, 3_s, bob_buff_type_e::BUFF_FLAT_PRIMARY }
+          } 
+        } 
+      },
+      { "bdk", 
+        { ROLE_TANK, 10.1 * 1.1, true, 1.5_s, 0.45, -1, 8, 1, 0.0, 20000.0, 0.0011, 0, 0,
+          {
+            { "dps_pot",                  695.0, 30_s, 300_s, 3_s, bob_buff_type_e::BUFF_FLAT_PRIMARY },
+            { "90s_trinket",              480.0,    20_s,   90_s,  0_s, bob_buff_type_e::BUFF_FLAT_PRIMARY },
+            { "berserking",                 0.1,    12_s,  180_s,  0_s, bob_buff_type_e::BUFF_HASTE },
+            { "raise_dead",                 0.2,    15_s,   90_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "90s_something",              0.15,   10_s,   90_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "reapers_mark_1",             0.4,    16_s,   45_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "reapers_mark_2",             0.3,    12_s,   45_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "reapers_mark_3",             0.2,     8_s,   45_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "reapers_mark_4",             0.5,     4_s,   45_s,  0_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
           } 
         } 
       },
@@ -518,29 +533,29 @@ struct simplified_player_t : public player_t
       { "shadow_archon", 
         { ROLE_SPELL, 19.1 * 1.32, true, 1.5_s, 0.45, -1, 12, 1, -0.1, 20000.0, 0.0011, 0.1, 0.35,
           { 
-            { "trinket", 0.2, 15_s, 120_s, 0_s, bob_buff_type_e::BUFF_MAST },
-            { "pi", 0.2, 15_s, 120_s, 3_s, bob_buff_type_e::BUFF_HASTE },
-            { "vf", 0.3, 26_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "one_mins_cds", 0.3, 25_s, 60_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "one_mins_cds_part2", 0.1, 25_s, 60_s, 8_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "trinket",                0.2, 15_s, 120_s, 0_s, bob_buff_type_e::BUFF_MAST },
+            { "pi",                     0.2, 15_s, 120_s, 3_s, bob_buff_type_e::BUFF_HASTE },
+            { "vf",                     0.3, 26_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "one_mins_cds",           0.3, 25_s, 60_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "one_mins_cds_part2",     0.1, 25_s, 60_s, 8_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
             { "one_mins_cds_lingering", 0.1, 35_s, 60_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "dps_pot", 695.0, 30_s, 300_s, 3_s, bob_buff_type_e::BUFF_FLAT_PRIMARY }
+            { "dps_pot",              695.0, 30_s, 300_s, 3_s, bob_buff_type_e::BUFF_FLAT_PRIMARY }
           } 
         }
       },
       { "shadow",
         { ROLE_SPELL, 21.0 * 1.32, true, 1.5_s, 0.45, -1, 12, 1, -0.1,  20000.0, 0.0011, 0.1, 0.35,
           { 
-            { "trinket", 0.2, 15_s, 120_s, 0_s, bob_buff_type_e::BUFF_MAST },
-            { "pi", 0.2, 15_s, 120_s, 3_s, bob_buff_type_e::BUFF_HASTE },
-            { "vf", 0.3, 20_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "30s_cds", 0.4, 12_s, 30.75_s, 2_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "trinket",   0.2, 15_s, 120_s, 0_s, bob_buff_type_e::BUFF_MAST },
+            { "pi",        0.2, 15_s, 120_s, 3_s, bob_buff_type_e::BUFF_HASTE },
+            { "vf",        0.3, 20_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "30s_cds",   0.4, 12_s,  30_s, 2_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
             { "dps_pot", 695.0, 30_s, 300_s, 2_s, bob_buff_type_e::BUFF_FLAT_PRIMARY }
           } 
         }
       },
       { "bm",
-        { ROLE_SPELL, 16.4 * 1.245, true, 1.5_s, 0.45, -1, 8, 1, -0.1, 14000.0, 0.0011, 0, 0,
+        { ROLE_SPELL, 16.4 * 1.245 * 0.96, true, 1.5_s, 0.45, -1, 8, 1, -0.1, 14000.0, 0.0011, 0, 0,
           { 
             { "trinket",            0.2, 15_s, 120_s, 0_s, bob_buff_type_e::BUFF_MAST },
             { "beastial_wrath",     0.8, 16_s,  30_s, 1_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
@@ -553,18 +568,18 @@ struct simplified_player_t : public player_t
       { "assa",
         { ROLE_SPELL, 13.5 * 1.21, false, 1_s, 0.5, -1, 8, 1, 0.8, 11100.0, 0.0011, 0.25, 0.35,
           { 
-            { "two_mins_cds", 0.9, 20_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "one_mins_cds", 0.65, 14_s, 60_s, 4_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "dps_pot", 695.0, 30_s, 360_s, 4_s, bob_buff_type_e::BUFF_FLAT_PRIMARY } 
+            { "two_mins_cds", 0.9,  20_s, 120_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "one_mins_cds", 0.65, 14_s,  60_s, 4_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "dps_pot",    695.0,  30_s, 360_s, 4_s, bob_buff_type_e::BUFF_FLAT_PRIMARY } 
           } 
         }
       },
       { "unh",
         { ROLE_SPELL, 19.6 * 0.945, true, 1.5_s, 0.5, -1, 8, 1, 0, 18000.0, 0.0011, 0.1, 0.35,
           { 
-            { "90s_cds", 0.8, 20_s, 90_s, 6_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "45s_cds", 0.55, 20_s, 45_s, 7_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "45s_cds_2", 0.2, 30_s, 45_s, 7_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "90s_cds",  0.8,  20_s,  90_s, 6_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "45s_cds",  0.55, 20_s,  45_s, 7_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "45s_cds_2", 0.2, 30_s,  45_s, 7_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
             { "dps_pot", 695.0, 30_s, 360_s, 7_s, bob_buff_type_e::BUFF_FLAT_PRIMARY } 
           }
         } 
@@ -587,14 +602,14 @@ struct simplified_player_t : public player_t
       { "arcane",
         { ROLE_SPELL, 16.4 * 1.21, true, 1.5_s, 0.45, -1,  8, 1, 0.0, 20000.0, 0.0011, 0.15, 0.35,
           { 
-            { "90s_cds", 1.2, 15_s, 90_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
-            { "45s_cds", 0.8, 12_s, 45_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "90s_cds",   1.2, 15_s, 90_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
+            { "45s_cds",   0.8, 12_s, 45_s, 3_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
             { "dps_pot", 695.0, 30_s, 320_s, 2_s, bob_buff_type_e::BUFF_FLAT_PRIMARY } 
           }
         }
       },
       { "dk_frost",
-        { ROLE_SPELL, 16.2 * 1.4, true, 1.5_s, 0.45, -1, 8, 1, 0, 6900.0, 0.0011, 0.05, 0.35,
+        { ROLE_SPELL, 16.2 * 1.4 * 1.022, true, 1.5_s, 0.55, -1, 8, 1, 0, 6900.0, 0.0011, 0.05, 0.35,
           { { "nerf_lust",                 -0.2,     8_s,  600_s,  0_s, bob_buff_type_e::BUFF_HASTE },
             { "90s_trinket",              480.0,    20_s,   90_s,  1_s, bob_buff_type_e::BUFF_FLAT_PRIMARY },
             { "funny_dragon",               0.10,    3_s,   90_s,  1_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
@@ -610,7 +625,7 @@ struct simplified_player_t : public player_t
         }
       },
       { "dk_frost_db",
-        { ROLE_SPELL, 16.2 * 1.076, true, 1.5_s, 0.45, -1, 8, 1, 0, 6900.0, 0.0011, 0.05, 0.35,
+        { ROLE_SPELL, 16.2 * 1.076 * 1.025, true, 1.5_s, 0.55, -1, 8, 1, 0, 6900.0, 0.0011, 0.05, 0.35,
           { { "nerf_lust",                 -0.2,     8_s,  600_s,  0_s, bob_buff_type_e::BUFF_HASTE },
             { "90s_trinket",              480.0,   20_s,   90_s,  1_s, bob_buff_type_e::BUFF_FLAT_PRIMARY },
             { "funny_dragon",               0.10,    3_s,   90_s,  1_s, bob_buff_type_e::BUFF_PERCENT_DAMAGE },
@@ -9381,7 +9396,7 @@ void evoker_t::create_permanent_actors()
       
       if ( sim->dbc->wowv() >= wowv_t( 12, 1, 0 ) )
       {
-        bobs = { { "Bob Shadow", "shadow_archon" }, { "Bob BM", "bm" }, { "Bob Tank", "tank" }, { "Bob Healer", "healer" } };
+        bobs = { { "Bob FDK", "dk_frost" }, { "Bob Shadow", "shadow_archon" }, { "Bob BDK", "bdk" }, { "Bob Healer", "healer" } };
       }
       else
       {
@@ -9398,14 +9413,14 @@ void evoker_t::create_permanent_actors()
       {
           
         bobs = {
-            { "Bob Shadow1",  "shadow" },
-            { "Bob Shadow2",  "shadow" },
+            { "Bob Shadow1",  "shadow_archon" },
+            { "Bob Shadow2",  "shadow_archon" },
             { "Bob FDK",      "dk_frost" },
             { "Bob BM",       "bm" },
             { "Bob Flat1",    "default" },
             { "Bob Demo",     "demo" },  // Local sandbag spec to estimate the more varied damage profiles of a real raid.
             { "Bob Healer1",  "healer" },
-            { "Bob Tank1",    "tank" },
+            { "Bob BDK",      "bdk" },
         };
       }
       else
@@ -11188,49 +11203,40 @@ void evoker_t::spawn_mote_of_possibility( player_t* prospective_player, mote_buf
       case mote_buffs_e::SYMBIOTIC_BLOOM:
       case mote_buffs_e::SHIFTING_SANDS:
       default:
-        //// Add a 3 copies of yourself. 50%~ for M+, relatively low in Raid.
-        //// TODO: Rework this entire system to use actions with travel times.
-        // helper.push_back( this );
-        // helper.push_back( this );
-        // helper.push_back( this );
         target = rng().range( helper );
+        // Roll again if it picks a tank, a healer, or you. These are not likely outcomes if played well.
+        if ( target == this || target->primary_role() == ROLE_TANK || target->primary_role() == ROLE_HEAL )
+          target = rng().range( helper );
         break;
     }
   }
 
   assert( target && "Target should be non-null" );
 
-  switch ( mote_buff )
+  if ( mote_buff == mote_buffs_e::INFERNOS_BLESSING )
   {
-    case mote_buffs_e::INFERNOS_BLESSING:
-      // Maintain two IBs
-      if ( active_infernos_blessings.size() > 0 )
-        rng().range( active_infernos_blessings )->cancel();
-      get_target_data( target )->buffs.infernos_blessing->trigger();
-      return;
-    case mote_buffs_e::PRESCIENCE:
-    {
-      double prescience_value = get_target_data( target )->buffs.prescience->default_value;
+    // Maintain two IBs
+    if ( active_infernos_blessings.size() > 0 )
+      rng().range( active_infernos_blessings )->cancel();
 
-      if ( talent.chronowarden.double_time.enabled() && rng().roll( cache.spell_crit_chance() ) )
-      {
-        prescience_value *= 1.0 + talent.chronowarden.double_time->effectN( 2 ).percent();
-      }
+    get_target_data( target )->buffs.infernos_blessing->trigger();
+  }
+  else if ( mote_buff == mote_buffs_e::PRESCIENCE )
+  {
+    double prescience_value = get_target_data( target )->buffs.prescience->default_value;
 
-      get_target_data( target )->buffs.prescience->trigger( 1, prescience_value );
-      return;
-    }
-    case mote_buffs_e::SYMBIOTIC_BLOOM:
-      return;
-    case mote_buffs_e::SHIFTING_SANDS:
+    if ( talent.chronowarden.double_time.enabled() && rng().roll( cache.spell_crit_chance() ) )
     {
-      auto td        = get_target_data( target );
-      auto buff_size = cache.mastery_value();
-      td->buffs.shifting_sands->trigger( 1, buff_size );
-      return;
+      prescience_value *= 1.0 + talent.chronowarden.double_time->effectN( 2 ).percent();
     }
-    default:
-      return;
+
+    get_target_data( target )->buffs.prescience->trigger( 1, prescience_value );
+  }
+  else if ( mote_buff == mote_buffs_e::SHIFTING_SANDS )
+  {
+    auto td        = get_target_data( target );
+    auto buff_size = cache.mastery_value();
+    td->buffs.shifting_sands->trigger( 1, buff_size );
   }
 }
 
