@@ -181,7 +181,7 @@ void beast_mastery_ptr( player_t* p )
   cds->add_action( "potion,if=cooldown.bestial_wrath.ready|fight_remains<31" );
 
   cleave->add_action( "barbed_shot,target_if=min:dot.barbed_shot.remains|max_prio_damage,if=full_recharge_time<gcd" );
-  cleave->add_action( "bestial_wrath,if=!prev.wild_thrash" );
+  cleave->add_action( "bestial_wrath,if=buff.beast_cleave.remains|!talent.beast_cleave|!talent.wild_thrash" );
   cleave->add_action( "wild_thrash,if=talent.beast_cleave" );
   cleave->add_action( "wild_thrash,if=!talent.beast_cleave" );
   cleave->add_action( "kill_command,if=buff.natures_ally.react|talent.master_handler&(active_enemies>3|howl_summon.ready)|!apex.3" );
@@ -396,8 +396,8 @@ void marksmanship_ptr( player_t* p )
   sentst->add_action( "volley" );
   sentst->add_action( "trueshot,if=variable.trueshot_ready" );
   sentst->add_action( "moonlight_chakram,if=buff.moonlight_chakram.remains<gcd.max" );
-  sentst->add_action( "kill_shot,target_if=max:debuff.sentinels_mark.down|max_prio_damage,if=buff.precise_shots.up&(buff.trueshot.up&prev_gcd.1.aimed_shot|!buff.trueshot.up)" );
-  sentst->add_action( "multishot,target_if=max:debuff.sentinels_mark.down,if=talent.aspect_of_the_hydra&!max_prio_damage&active_enemies>1&buff.precise_shots.up&(buff.trueshot.up&prev_gcd.1.aimed_shot|!buff.trueshot.up)" );
+  sentst->add_action( "kill_shot,target_if=max:debuff.sentinels_mark.down|max_prio_damage,if=buff.precise_shots.up" );
+  sentst->add_action( "multishot,target_if=max:debuff.sentinels_mark.down,if=talent.aspect_of_the_hydra&!max_prio_damage&active_enemies>1&buff.precise_shots.up" );
   sentst->add_action( "arcane_shot,target_if=max:debuff.sentinels_mark.down|max_prio_damage,if=buff.precise_shots.up&(buff.trueshot.up&prev_gcd.1.aimed_shot|!buff.trueshot.up)" );
   sentst->add_action( "rapid_fire" );
   sentst->add_action( "aimed_shot,target_if=max:debuff.sentinels_mark.up|max_prio_damage" );
@@ -561,11 +561,11 @@ void survival_ptr( player_t* p )
   plcleave->add_action( "wildfire_bomb" );
   plcleave->add_action( "takedown" );
 
-  sentcleave->add_action( "kill_command,if=buff.tip_of_the_spear.stack=0", "AOE - Sent" );
+  sentcleave->add_action( "kill_command,if=buff.tip_of_the_spear.stack=0&(cooldown.takedown.remains|!talent.twin_fangs)", "AOE - Sent" );
   sentcleave->add_action( "boomstick,if=buff.tip_of_the_spear.up" );
   sentcleave->add_action( "wildfire_bomb,target_if=max:debuff.sentinels_mark.remains,if=buff.tip_of_the_spear.up" );
   sentcleave->add_action( "kill_command,if=cooldown.takedown.remains<gcd&buff.tip_of_the_spear.stack<2&!talent.twin_fangs" );
-  sentcleave->add_action( "takedown,target_if=min:debuff.sentinels_mark.remains,if=buff.tip_of_the_spear.up" );
+  sentcleave->add_action( "takedown,target_if=min:debuff.sentinels_mark.remains,if=buff.tip_of_the_spear.stack>0&!talent.twin_fangs|buff.tip_of_the_spear.stack=0&talent.twin_fangs" );
   sentcleave->add_action( "moonlight_chakram,target_if=min:debuff.sentinels_mark.remains,if=buff.tip_of_the_spear.up" );
   sentcleave->add_action( "raptor_strike,target_if=min:debuff.sentinels_mark.remains,if=buff.tip_of_the_spear.up&buff.raptor_swipe.up|!buff.raptor_swipe.up" );
   sentcleave->add_action( "kill_command" );

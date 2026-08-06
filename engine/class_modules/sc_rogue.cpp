@@ -584,6 +584,7 @@ public:
     const spell_data_t* darkest_night_buff;
     const spell_data_t* deathstalkers_mark_damage;
     const spell_data_t* deathstalkers_mark_debuff;
+    const spell_data_t* deal_fate_energize;
     const spell_data_t* escalating_blade_buff;
     const spell_data_t* fatebound_coin_flips;
     const spell_data_t* fatebound_coin_heads_buff;
@@ -4160,6 +4161,11 @@ struct deathmark_t : public rogue_attack_t
     energize_type = action_energize::PER_TICK;
     energize_resource = RESOURCE_ENERGY;
     energize_amount = data().effectN( 3 ).base_value();
+
+    if ( p->is_ptr() )
+    {
+      energize_amount /= ( data().duration() / data().effectN( 1 ).period() );
+    }
   }
 
   void impact( action_state_t* state ) override
@@ -4325,15 +4331,16 @@ struct envenom_t : public rogue_attack_t
         p()->buffs.inspiring_strike->trigger( envenom_duration );
       }
 
-      if ( p()->set_bonuses.mid2_assassination_2pc->ok() )
-      {
-        p()->buffs.mid2_assassination_2pc->trigger( envenom_duration );
-      }
-
       p()->buffs.implacable_tracker->trigger();
     }
 
     p()->buffs.envenom->trigger( envenom_duration );
+
+    if ( p()->set_bonuses.mid2_assassination_2pc->ok() )
+    {
+      p()->buffs.mid2_assassination_2pc->trigger( envenom_duration );
+    }
+
     trigger_caustic_spatter_debuff( state ); // Appears to be before impact and poisons
 
     rogue_attack_t::impact( state );
@@ -6466,6 +6473,14 @@ struct goremaws_bite_t : public rogue_attack_t
     {
       add_child( impact_action );
       impact_action->impact_action->stats = stats;
+
+      // 2026-08-05 -- Still procs some energize effects like Premeditation and Shadow Techniques
+      if ( p->bugs )
+      {
+        energize_type = action_energize::ON_HIT;
+        energize_resource = RESOURCE_COMBO_POINT;
+        energize_amount = 0;
+      }
     }
   }
 
@@ -7882,7 +7897,10 @@ void actions::rogue_action_t<Base>::trigger_seal_fate( const action_state_t* sta
 
   if ( p()->talent.fatebound.deal_fate->ok() && procs_deal_fate() )
   {
-    trigger_combo_point_gain( as<int>( p()->talent.fatebound.deal_fate->effectN( 1 ).base_value() ), p()->gains.deal_fate );
+    if ( p()->is_ptr() && !p()->rng().roll( p()->talent.fatebound.deal_fate->effectN( 1 ).percent() ) )
+      return;
+
+    trigger_combo_point_gain( as<int>( p()->spell.deal_fate_energize->effectN( 1 ).base_value() ), p()->gains.deal_fate );
   }
 }
 
@@ -8210,7 +8228,7 @@ void actions::rogue_action_t<Base>::trigger_opportunity( const action_state_t* s
   {
     if ( p()->talent.fatebound.deal_fate->ok() )
     {
-      trigger_combo_point_gain( as<int>( p()->talent.fatebound.deal_fate->effectN( 1 ).base_value() ),
+      trigger_combo_point_gain( as<int>( p()->spell.deal_fate_energize->effectN( 1 ).base_value() ),
                                 p()->gains.deal_fate );
     }
 
@@ -10264,6 +10282,7 @@ void rogue_t::init_spells()
   spell.fatebound_coin_tails_buff = talent.fatebound.hand_of_fate->ok() ? find_spell( 452917 ) : spell_data_t::not_found();
   spell.fatebound_coin_tails = talent.fatebound.hand_of_fate->ok() ? find_spell( 452538 ) : spell_data_t::not_found();
   spell.fatebound_lucky_coin_buff = talent.fatebound.lucky_coin->ok() ? find_spell( 1248971 ) : spell_data_t::not_found();
+  spell.deal_fate_energize = talent.fatebound.deal_fate->ok() ? find_spell( 454421 ) : spell_data_t::not_found();
 
   // Trickster
   spell.cloud_cover_buff = talent.trickster.cloud_cover->ok() ? find_spell( 441587 ) : spell_data_t::not_found();
@@ -10956,11 +10975,8 @@ void rogue_t::create_buffs()
 
   buffs.darkest_night = make_buff( this, "darkest_night", spell.darkest_night_buff );
 
-  buffs.unshakeable_drive = make_buff<damage_buff_t>( this, "unshakeable_drive", spell.unshakeable_drive_buff, false );
-  if ( !is_ptr() )
-  {
-    buffs.unshakeable_drive->set_is_stacking_mod( bugs ); // 2026-03-13 -- Does not suppress points stacking even though only one stack is decremented
-  }
+  buffs.unshakeable_drive = make_buff<damage_buff_t>( this, "unshakeable_drive", spell.unshakeable_drive_buff, false )
+    ->set_is_stacking_mod( !is_ptr() && bugs );
   if ( spell.unshakeable_drive_buff->ok() )
   {
     // Use the 50% modifier as the "generic" version of this buff, Shadowstrike has a lower buff in effect 2
@@ -11222,6 +11238,7 @@ void rogue_t::create_buffs()
   // Use the Envenom whitelists for the damage buff and sync up on trigger and expire
   buffs.mid2_assassination_2pc = make_buff<damage_buff_t>( this, "mid2_assassination_2pc", set_bonuses.mid2_assassination_2pc, false );
   buffs.mid2_assassination_2pc
+    ->set_quiet( true )
     ->set_proc_callbacks( false )
     ->set_refresh_behavior( buff_refresh_behavior::DURATION );
   if ( set_bonuses.mid2_assassination_2pc->ok() )
