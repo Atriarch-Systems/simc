@@ -4460,6 +4460,7 @@ private:
   using ab = evoker_action_t<spell_t>;
 
 public:
+  bool affected_by_giantkiller = true;
   evoker_spell_t( std::string_view name, evoker_t* player, const spell_data_t* spell = spell_data_t::nil(),
                   std::string_view options_str = {} )
     : ab( name, player, spell )
@@ -4512,7 +4513,7 @@ public:
 
     // Preliminary testing shows this is linear with target hp %.
     // TODO: confirm this applies only to all evoker offensive spells
-    if ( p()->specialization() == EVOKER_DEVASTATION )
+    if ( p()->specialization() == EVOKER_DEVASTATION && affected_by_giantkiller )
     {
       if ( use_full_mastery() )
         tm *= 1.0 + p()->cache.mastery_value();
@@ -5265,7 +5266,8 @@ struct fire_breath_t : public empowered_charge_spell_t
     {
       auto mul = base_t::tick_time_pct_multiplier( state );
 
-      if ( p()->talent.catalyze.ok() && p()->get_target_data( state->target )->dots.disintegrate->is_ticking() )
+      if ( p()->talent.catalyze.ok() && p()->get_target_data( state->target )->dots.disintegrate->is_ticking() &&
+           p()->get_target_data( state->target )->dots.disintegrate->ticks_left_fractional() > 0 )
       {
         mul /= ( 1.0 + p()->talent.catalyze->effectN( 1 ).percent() );
       }
@@ -5399,6 +5401,7 @@ struct shattering_star_t : public evoker_spell_t
 {
   shattering_star_t( evoker_t* p, std::string_view name ) : evoker_spell_t( name, p, p->talent.shattering_star_spell )
   {
+    affected_by_giantkiller = false;
   }
 };
 

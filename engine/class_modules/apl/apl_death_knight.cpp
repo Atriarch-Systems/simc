@@ -367,10 +367,7 @@ void unholy( player_t* p )
   cooldowns->add_action( "outbreak,if=(!talent.blightburst|talent.blightburst&(cooldown.putrefy.remains>gcd.max*2|time<5))&(dot.dread_plague.active_dots=0|dot.virulent_plague.active_dots=0)&(fight_remains>gcd.max*2&!raid_event.adds.exists|raid_event.adds.exists&raid_event.adds.remains>gcd.max*2)" );
   cooldowns->add_action( "army_of_the_dead,if=(variable.st_planning|variable.adds_remain)&(buff.festering_scythe_tt.up|!talent.festering_scythe)" );
   cooldowns->add_action( "soul_reaper,target_if=min:health.pct,if=!talent.blightfall&(!debuff.soul_reaper_debuff.up|!variable.cds_active&cooldown.dark_transformation.remains>cooldown.soul_reaper.duration-1|cooldown.dark_transformation.remains<gcd.max&talent.reaping)|talent.blightfall&talent.infliction_of_sorrow&(buff.dark_transformation.remains<5|buff.reaping.remains<=gcd.max)" );
-  if ( p->sim->dbc->wowv() >= wowv_t( 12, 1, 0 ) )
-    cooldowns->add_action( "putrefy,if=(variable.st_planning|variable.adds_remain)&(buff.dark_transformation.up|raid_event.adds.exists&raid_event.adds.remains<3)" );
-  else
-    cooldowns->add_action( "putrefy,if=(variable.st_planning|variable.adds_remain)*(target.health.pct>35|!talent.soul_reaper)&(charges=max_charges&!buff.sudden_doom.react&(cooldown.dark_transformation.remains>9|!talent.reaping|!talent.soul_reaper)|buff.dark_transformation.up)|fight_remains<cooldown.soul_reaper.remains|raid_event.adds.exists&raid_event.adds.remains<3" );
+  cooldowns->add_action( "putrefy,if=(variable.st_planning|variable.adds_remain)&(buff.dark_transformation.up|raid_event.adds.exists&raid_event.adds.remains<3)" );
   cooldowns->add_action( "dark_transformation,if=(variable.st_planning|variable.adds_remain)&!buff.blightfall.up&(pet.army_ghoul.active|cooldown.army_of_the_dead.remains>30|!talent.army_of_the_dead)|buff.blightfall.up&buff.dark_transformation.remains<4" );
 
   racials->add_action( "ancestral_call,if=variable.cds_active", "Racials" );
@@ -383,8 +380,8 @@ void unholy( player_t* p )
   racials->add_action( "lights_judgment,if=runic_power<20&rune<2" );
 
   single_target->add_action( "festering_strike,if=talent.festering_scythe&fight_remains>3&(buff.festering_scythe.up&(buff.festering_scythe.remains<=3|buff.festering_scythe_tt.remains<3)|!buff.festering_scythe.up&buff.festering_scythe_tt.remains<3)", "Single Target Rotation" );
-  single_target->add_action( "scourge_strike,if=buff.lesser_ghoul_ready.stack>=1&talent.gift_of_the_sanlayn&buff.essence_of_the_blood_queen.stack<5&buff.vampiric_strike.up" );
-  single_target->add_action( "death_coil,if=buff.sudden_doom.react" );
+  single_target->add_action( "scourge_strike,if=buff.vampiric_strike.up&(buff.lesser_ghoul_ready.stack>=1&talent.gift_of_the_sanlayn&buff.essence_of_the_blood_queen.stack<5|buff.essence_of_the_blood_queen.up&buff.essence_of_the_blood_queen.remains<gcd*3|buff.dark_transformation.up&buff.dark_transformation.remains<gcd*2)" );
+  single_target->add_action( "death_coil,if=buff.sudden_doom.react|buff.essence_of_the_blood_queen.remains<5&!buff.vampiric_strike.react" );
   single_target->add_action( "scourge_strike,if=buff.lesser_ghoul_ready.stack>=1&buff.blighted.up" );
   single_target->add_action( "death_coil,if=variable.spending_rp" );
   single_target->add_action( "putrefy,if=(target.health.pct>35|!talent.soul_reaper)&(buff.commander_of_the_dead.remains>9|!talent.commander_of_the_dead)" );
@@ -397,7 +394,7 @@ void unholy( player_t* p )
   trinkets->add_action( "use_item,slot=trinket1,if=!variable.trinket_1_buffs&(variable.damage_trinket_priority=1|!variable.trinket_2_buffs|!trinket.2.has_cooldown)" );
   trinkets->add_action( "use_item,slot=trinket2,if=!variable.trinket_2_buffs&(variable.damage_trinket_priority=2|!variable.trinket_1_buffs|!trinket.1.has_cooldown)" );
 
-  variables->add_action( "variable,name=spending_rp,value=rune<2|buff.forbidden_knowledge.up&(rune<4|pet.gargoyle.active)|buff.sudden_doom.react", "Variables" );
+  variables->add_action( "variable,name=spending_rp,value=rune<2|buff.forbidden_knowledge.up&(rune<3|pet.gargoyle.active|buff.essence_of_the_blood_queen.stack>=2)|buff.sudden_doom.react", "Variables" );
   variables->add_action( "variable,name=st_planning,op=setif,value=1,value_else=0,condition=active_enemies=1&(!raid_event.adds.exists|!raid_event.adds.in|raid_event.adds.in>15|!raid_event.pull.exists|raid_event.pull.exists&raid_event.pull.in>15)" );
   variables->add_action( "variable,name=adds_remain,value=active_enemies>=2&((!raid_event.adds.exists|!raid_event.pull.exists)|raid_event.adds.remains>5|raid_event.pull.remains>5)" );
   variables->add_action( "variable,name=cds_active,value=pet.army_ghoul.active|buff.forbidden_knowledge.up|buff.dark_transformation.up&buff.dark_transformation.remains>5" );
